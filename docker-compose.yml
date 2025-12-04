@@ -1,0 +1,48 @@
+services:
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:latest
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  spark-master:
+    image: bitnami/spark:3  # On utilise le tag '3' qui est plus sûr que '3.5.0'
+    user: root
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./analysis_tier:/app
+      - ./data:/data
+    # Commande qui installe les librairies au démarrage (contourne le build Docker)
+    command: >
+      bash -c "pip install kafka-python textblob faker pyspark==3.5.0 &&
+               python -m textblob.download_corpora &&
+               /opt/bitnami/scripts/spark/run.sh"
+
+  producer:
+    image: python:3.9-slim
+    depends_on:
+      - kafka
+    volumes:
+      - ./collection_tier:/collection_tier
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    # Installe et lance le producer
+    command: >
+      bash -c "pip install kafka-python faker &&
+               python /collection_tier/social_producer.py"
